@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2020",                      /* Especifica la versión de ECMAScript de salida */
+    "module": "commonjs",                     /* Especifica el sistema de módulos: 'commonjs' para Node.js */
+    "rootDir": "./src",                       /* Directorio raíz de los archivos de entrada .ts */
+    "outDir": "./dist",                       /* Directorio de salida para los archivos .js compilados */
+    "esModuleInterop": true,                  /* Permite la interoperabilidad con módulos CommonJS */
+    "forceConsistentCasingInFileNames": true, /* Asegura que los nombres de archivo sean consistentes en mayúsculas/minúsculas */
+    "strict": true,                           /* Habilita todas las opciones de chequeo de tipos estrictos */
+    "skipLibCheck": true                      /* Omite la verificación de tipos de los archivos de declaración (.d.ts) */
+  },
+  "include": ["src/**/*"],                    /* Incluye todos los archivos dentro de la carpeta src */
+  "exclude": ["node_modules"]                 /* Excluye la carpeta de dependencias */
+}
