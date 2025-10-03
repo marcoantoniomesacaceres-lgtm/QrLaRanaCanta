@@ -44,11 +44,11 @@ export default function (io: Server) {
       // Segunda consulta: obtener los datos paginados
       const dataParams = [...params, limitNumber, offset];
       const dataQuery = `
-        SELECT c.id, c.titulo, c.estado, u.nick as solicitante
+        SELECT c.id, c.titulo, c.estado, u.nick as solicitante, c.created_at
         FROM canciones c
         LEFT JOIN usuarios u ON c.usuario_id = u.id
         ${whereClause}
-        ORDER BY c.id ASC
+        ORDER BY c.created_at ASC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `;
 

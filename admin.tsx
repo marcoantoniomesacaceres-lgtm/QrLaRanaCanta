@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { apiClient } from '../lib/apiClient';
-import { useSession } from '../context/SessionContext';
+import { AuthGuard } from '../components/AuthGuard';
 
 interface AdminSong {
   id: number;
   titulo: string;
   estado: 'pendiente' | 'aprobada' | 'cantada' | 'rechazada';
   solicitante: string | null;
+  created_at: string;
 }
 
 interface PaginationInfo {
@@ -22,21 +23,14 @@ interface AdminSongsResponse {
 }
 
 const AdminPage = () => {
-  const { user, isLoading: isSessionLoading } = useSession();
   const [pendingSongs, setPendingSongs] = useState<AdminSong[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const isAdmin = user?.rol === 'admin';
 
   // Efecto para cargar las canciones pendientes y conectar al socket
   useEffect(() => {
-    if (!isAdmin || isSessionLoading) {
-      setIsLoading(false);
-      return;
-    }
-
     const fetchPendingSongs = async (page: number) => {
       setIsLoading(true);
       try {
@@ -69,7 +63,7 @@ const AdminPage = () => {
       socket.off('queue_updated', handleQueueUpdate);
       socket.disconnect();
     };
-  }, [isAdmin, isSessionLoading, currentPage]);
+  }, [currentPage]);
 
   const handleApproveSong = async (songId: number) => {
     await apiClient.post(`/admin/songs/${songId}/approve`, {});
@@ -81,12 +75,13 @@ const AdminPage = () => {
     // La actualización de la UI se manejará a través del evento de socket.
   };
 
-  if (isSessionLoading || (isLoading && pendingSongs.length === 0)) return <div>Cargando...</div>;
-  if (!isAdmin) return <div>Acceso denegado. Debes ser administrador para ver esta página. (Intenta iniciar sesión con una cuenta de admin)</div>;
+  if (isLoading && pendingSongs.length === 0) return <div>Cargando...</div>;
   if (error) return <div>Error: {error}</div>;
 
   return (
-    <div style={{ padding: '2rem' }}>
+    // Envolvemos el contenido de la página con el AuthGuard
+    <AuthGuard requiredRole="admin">
+      <div style={{ padding: '2rem' }}>
       <h1>Panel de Administración - Canciones Pendientes</h1>
       {pendingSongs.length === 0 && !isLoading ? (
         <p>No hay canciones pendientes de aprobación.</p>
@@ -130,7 +125,8 @@ const AdminPage = () => {
           )}
         </>
       )}
-    </div>
+      </div>
+    </AuthGuard>
   );
 };
 
@@ -165,6 +161,7 @@ export default AdminPage;
             <tr style={{ background: '#eee' }}>
               <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Título</th>
               <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Solicitante</th>
+              <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Fecha de Solicitud</th>
               <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Acciones</th>
             </tr>
           </thead>
@@ -173,6 +170,9 @@ export default AdminPage;
               <tr key={song.id}>
                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>{song.titulo}</td>
                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>{song.solicitante || 'N/A'}</td>
+                <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                  {new Date(song.created_at).toLocaleString()}
+                </td>
                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
                   <button onClick={() => handleApproveSong(song.id)} style={{ background: 'green', color: 'white' }}>Aprobar</button>
                   <button onClick={() => handleRejectSong(song.id)} style={{ background: 'red', color: 'white', marginLeft: '5px' }}>Rechazar</button>

@@ -33,5 +33,6 @@ CREATE TABLE canciones (
   duracion_seconds INT,
   usuario_id INT REFERENCES usuarios(id) ON DELETE SET NULL,
   estado VARCHAR(20) DEFAULT 'pendiente', -- pendiente, aprobada, cantada, rechazada
-  orden INT
+  orden INT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
