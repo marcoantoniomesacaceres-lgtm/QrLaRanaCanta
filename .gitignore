@@ -1,0 +1,11 @@
+# Entorno virtual
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Archivos de VS Code
+.vscode/
+
+# Dependencias
+*.log
