@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { apiClient } from '../../lib/apiClient'; // Importamos nuestro cliente de API
+import { useSession } from '../../context/SessionContext';
+import { apiClient } from '../../lib/apiClient';
 
 // Definimos interfaces para la estructura de datos que esperamos del API.
 // Esto nos da autocompletado y seguridad de tipos.
@@ -31,26 +31,14 @@ interface SearchResult {
   thumbnailUrl: string;
 }
 
-interface SessionData {
-  usuario: User;
-  mesa: Table;
-}
-
-interface ConnectResponse {
-  token: string;
-  usuario: User;
-  mesa: Table;
-}
-
 const MesaPage = () => {
   const router = useRouter();
   const { qr } = router.query; // Extrae el código QR de la URL
 
-  // Estados para manejar la sesión, carga y errores
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Usamos el contexto para el estado global de la sesión
+  const { user, table, socket, connect, isLoading: isSessionLoading, isAuthenticated } = useSession();
+
   const [error, setError] = useState<string | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   // --- Estados para el formulario y la lista de canciones ---
   const [notifications, setNotifications] = useState<string[]>([]);
@@ -62,68 +50,80 @@ const MesaPage = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Efecto para conectar a la mesa cuando el QR está disponible
   useEffect(() => {
-    // No hacemos nada hasta que el router esté listo y tengamos el código QR
-    if (!qr) {
+    // Solo intentamos conectar si tenemos un QR y no estamos ya autenticados
+    if (qr && !isAuthenticated) {
+      connect(qr as string).catch((err) => {
+        setError(err.message);
+      });
+    }
+  }, [qr, isAuthenticated, connect]);
+
+  // Efecto para manejar los listeners del socket
+  useEffect(() => {
+    if (!socket) {
       return;
     }
 
-    const connectToTable = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Usamos nuestro apiClient. ¡Mucho más limpio!
-        const { token, usuario, mesa } = await apiClient.post<ConnectResponse>(
-          `/mesa/${qr}/connect`,
-          {} // Podemos enviar un nick aquí: { nick: 'Marco' }
-        );
-
-        // 1. Guardar el token de forma segura (localStorage es común para esto)
-        localStorage.setItem('authToken', token);
-
-        // 2. Actualizar el estado de la aplicación con los datos de la sesión
-        setSession({ usuario, mesa });
-
-        // 3. Conectar al WebSocket y unirse a la sala de la mesa
-        const newSocket = io('http://localhost:8080'); // URL de tu backend
-        newSocket.on('connect', () => {
-          console.log('Conectado al servidor de WebSockets!');
-          newSocket.emit('join_table', `mesa-${mesa.id}`); // Usamos un prefijo para la sala
-        });
-
-        // 4. Escuchar eventos de WebSocket para actualizar la UI
-        newSocket.on('song_added', (newSong: Song) => {
-          console.log('Nueva canción añadida:', newSong);
-          setQueue((currentQueue) => [...currentQueue, newSong]);
-        });
-
-        // 5. Escuchar el evento de nuevo usuario y mostrar notificación
-        newSocket.on('user_joined', (data: { nick: string }) => {
-          const message = `¡${data.nick} se ha unido a la mesa!`;
-          console.log(message);
-          setNotifications((prev) => [...prev, message]);
-          // Hacemos que la notificación desaparezca después de 5 segundos
-          setTimeout(() => {
-            setNotifications((prev) => prev.slice(1));
-          }, 5000);
-        });
-        setSocket(newSocket);
-
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+    const handleSongAdded = (newSong: Song) => {
+      console.log('Nueva canción añadida:', newSong);
+      setQueue((currentQueue) => [...currentQueue, newSong]);
+    };
+    const handleUserJoined = (data: { nick: string }) => {
+      const message = `¡${data.nick} se ha unido a la mesa!`;
+      console.log(message);
+      setNotifications((prev) => [...prev, message]);
+      setTimeout(() => setNotifications((prev) => prev.slice(1)), 5000);
+    };
+    const handleQueueUpdated = (updatedSong: Song) => {
+      console.log('Canción actualizada:', updatedSong);
+      setQueue((currentQueue) =>
+        currentQueue.map((song) => (song.id === updatedSong.id ? updatedSong : song))
+      );
     };
 
-    connectToTable();
+    socket.on('song_added', handleSongAdded);
+    socket.on('user_joined', handleUserJoined);
+    socket.on('queue_updated', handleQueueUpdated);
 
-    // Limpieza: desconectar el socket cuando el componente se desmonte
     return () => {
-      socket?.disconnect();
+      socket.off('song_added', handleSongAdded);
+      socket.off('user_joined', handleUserJoined);
+      socket.off('queue_updated', handleQueueUpdated);
     };
-  }, [qr]); // El efecto se ejecuta cada vez que el valor de 'qr' cambia
+  }, [socket]);
+
+  // --- Efecto para la búsqueda con debounce ---
+  useEffect(() => {
+    // Si no hay texto en la búsqueda, limpiamos los resultados y no hacemos nada más.
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+
+    // Configuramos un temporizador. La búsqueda solo se ejecutará si el usuario
+    // deja de escribir durante 500ms.
+    const searchTimeout = setTimeout(async () => {
+      try {
+        const results = await apiClient.get<SearchResult[]>(`/search?q=${encodeURIComponent(searchQuery)}`);
+        setSearchResults(results);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error.';
+        // Evitamos alertas molestas mientras el usuario escribe
+        console.error(`Error al buscar: ${errorMessage}`);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500); // 500ms de espera
+
+    // Función de limpieza: se ejecuta si el usuario sigue escribiendo.
+    // Cancela el temporizador anterior para evitar búsquedas innecesarias.
+    return () => clearTimeout(searchTimeout);
+
+  }, [searchQuery]); // Este efecto se dispara cada vez que 'searchQuery' cambia.
 
   // Función para llamar a una ruta protegida
   const fetchMyInfo = async () => {
@@ -135,26 +135,6 @@ const MesaPage = () => {
       const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error.';
       console.error('Error al obtener la información del usuario:', errorMessage);
       alert(`Falló la petición: ${errorMessage}`);
-    }
-  };
-
-  // --- Función para buscar canciones en YouTube a través de nuestro backend ---
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchResults([]);
-    try {
-      const results = await apiClient.get<SearchResult[]>(`/search?q=${encodeURIComponent(searchQuery)}`);
-      setSearchResults(results);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Ocurrió un error.';
-      alert(`Error al buscar: ${errorMessage}`);
-    } finally {
-      setIsSearching(false);
     }
   };
 
@@ -179,14 +159,14 @@ const MesaPage = () => {
     }
   };
 
-  if (loading) return <div>Conectando a la mesa...</div>;
+  if (isSessionLoading) return <div>Conectando a la mesa...</div>;
   if (error) return <div>Error: {error}</div>;
-  if (!session) return <div>No se pudo establecer la sesión.</div>;
+  if (!isAuthenticated || !user || !table) return <div>Escanea un código QR para empezar.</div>;
 
   // Si todo fue exitoso, muestra la interfaz principal del cliente
   return (
     <div>
-      <h1>¡Bienvenido a la mesa {session.mesa.nombre}!</h1>
+      <h1>¡Bienvenido a la mesa {table.nombre}!</h1>
 
       {/* --- Componente de Notificaciones --- */}
       <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000 }}>
@@ -197,25 +177,20 @@ const MesaPage = () => {
         ))}
       </div>
 
-      <p>Hola, {session.usuario.nick} ({session.usuario.nivel})</p>
+      <p>Hola, {user.nick} ({user.nivel})</p>
       <hr />
       <button onClick={fetchMyInfo}>Probar Ruta Protegida (/api/me)</button>
 
       {/* --- Componente de Búsqueda de Canciones --- */}
       <div style={{ marginTop: '20px' }}>
         <h3>Buscar Canción</h3>
-        <form onSubmit={handleSearch}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Título de la canción"
-            disabled={isSearching}
-          />
-          <button type="submit" disabled={isSearching}>
-            {isSearching ? 'Buscando...' : 'Buscar'}
-          </button>
-        </form>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Artista o título de la canción..."
+          style={{ width: '100%', padding: '8px' }}
+        />
 
         {/* --- Resultados de la Búsqueda --- */}
         <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -237,7 +212,7 @@ const MesaPage = () => {
         <ul>
           {queue.map((song) => (
             <li key={song.id}>
-              {song.titulo} ({song.estado})
+              {song.titulo} - <strong>{song.estado.toUpperCase()}</strong>
             </li>
           ))}
         </ul>

@@ -13,6 +13,7 @@ CREATE TABLE usuarios (
   mesa_id INT REFERENCES mesas(id) ON DELETE SET NULL,
   puntos INT DEFAULT 0,
   nivel VARCHAR(10) DEFAULT 'bronce', -- bronce, plata, oro
+  rol VARCHAR(20) NOT NULL DEFAULT 'cliente', -- cliente, admin
   last_active TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 

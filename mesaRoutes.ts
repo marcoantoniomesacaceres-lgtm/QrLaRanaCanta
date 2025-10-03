@@ -32,14 +32,14 @@ export default function (io: Server) {
 
       // 2. Crear un nuevo usuario asociado a la mesa
       const usuarioResult = await db.query(
-        'INSERT INTO usuarios (nick, mesa_id) VALUES ($1, $2) RETURNING id, nick, nivel, puntos',
+        'INSERT INTO usuarios (nick, mesa_id) VALUES ($1, $2) RETURNING id, nick, nivel, puntos, rol',
         [userNick, mesa.id]
       );
       const nuevoUsuario = usuarioResult.rows[0];
 
       // 3. Generar un token JWT para la sesión del cliente
       const token = jwt.sign(
-        { userId: nuevoUsuario.id, tableId: mesa.id, nick: nuevoUsuario.nick },
+        { userId: nuevoUsuario.id, tableId: mesa.id, nick: nuevoUsuario.nick, rol: nuevoUsuario.rol },
         JWT_SECRET,
         { expiresIn: '8h' } // El token expira en 8 horas
       );

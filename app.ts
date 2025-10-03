@@ -5,6 +5,7 @@ import db from './config/db'; // Importamos nuestro módulo de base de datos
 import mesaRoutes from './api/mesaRoutes'; // Importamos las rutas de mesa
 import songRoutes from './api/songRoutes'; // Importamos las rutas de canciones
 import searchRoutes from './api/searchRoutes'; // Importamos las rutas de búsqueda
+import adminRoutes from './api/adminRoutes'; // Importamos las rutas de admin
 
 // --- 1. Inicialización del Servidor ---
 const app = express();
@@ -50,6 +51,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
 app.use('/api', searchRoutes);
 app.use('/api', mesaRoutes(io)); // Inyectamos la instancia 'io' al router de mesas
 app.use('/api', songRoutes(io)); // Inyectamos la instancia 'io' al router de canciones
+app.use('/api', adminRoutes(io)); // Inyectamos la instancia 'io' al router de admin
 
 // --- 4. Lógica de WebSockets (Socket.IO) ---
 io.on('connection', (socket) => {
