@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { authenticateToken } from './auth';
-import db from '../config/db';
+import db from './db';
 
 export const adminAuthenticate = (req: Request, res: Response, next: NextFunction) => {
   // Primero, usamos el middleware de autenticación normal para verificar el token.
